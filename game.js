@@ -751,24 +751,15 @@ function startFind(){
   hideTitle();showGameUI(true);updateHud();startBgm();
   lock=false;
   toast("でんわを さがそう。近づくと 鳴るよ",3000);
-  setTimeout(()=>{if(mode==="find"&&!lock)toast("黒い もやは、押しつづけると すこしずつ 晴れる",3600);},3600);
+  setTimeout(()=>{if(mode==="find"&&!lock)toast("黒い もやは、ひろった こえを 手放すと 晴れる",3600);},3600);
 }
 
 let fogHintT=0;
-// もやに ふれて 押していると、すこしずつ 晴れる
-let erodeT=0;
-function erode(){
-  const l=Math.hypot(player.mvx,player.mvy)||1;
-  const px=player.x+player.mvx/l*11,py=player.y-3+player.mvy/l*11;
-  clearings.push({x:px,y:py,r:20,cur:6});maskDirty=true;
-  if(actx){const o=actx.createOscillator(),g=actx.createGain(),t=actx.currentTime;o.type="triangle";o.frequency.value=1500+Math.random()*700;
-    g.gain.setValueAtTime(.05,t);g.gain.exponentialRampToValueAtTime(.001,t+.12);o.connect(g);g.connect(actx.destination);o.start(t);o.stop(t+.13);}
-}
 function bump(hit){
   if(mode!=="find"||inCall)return;
   const now=performance.now();
   if(hit==="fog"||hit==="blob"){
-    if(now-fogHintT>9000){fogHintT=now;toast(hit==="blob"?"この もやは、こえを 手放さないと 晴れない":kept.length?"押しつづけると すこしずつ 晴れる。こえを 手放すと 一気に 晴れる":"押しつづけると、すこしずつ 晴れていく");}
+    if(now-fogHintT>9000){fogHintT=now;toast(hit==="blob"?"この もやは、こえを 手放さないと 晴れない":kept.length?"右の ボタンで、こえを 手放して もやを 晴らせる":"こえを ひろうと、もやを 晴らせるように なる");}
     return;
   }
   if(hit.final&&!finalActive&&now-fogHintT>2500){fogHintT=now;toast("……まだ つながらない みたい");}
@@ -991,7 +982,6 @@ function loop(now){
       const h1=tryMove(vx*sp,0),h2=tryMove(0,vy*sp);
       if(Math.hypot(player.x-ox,player.y-oy)>.4){stepT+=dt*(.5+mag*.5);if(stepT>.2){stepT=0;footstep();}}
       const hit=h1||h2;if(hit)bump(hit);
-      if(mode==="find"&&(h1==="fog"||h2==="fog")){erodeT+=dt;if(erodeT>.3){erodeT=0;erode();}}
       player.animT+=dt*mag;if(player.animT>.12){player.animT=0;player.frame^=1;}
     }else player.frame=0;
   }
@@ -1054,6 +1044,6 @@ function loop(now){
   renderer.render(scene,camera);
   requestAnimationFrame(loop);
 }
-const GAME_VER="v0.4.6";$("ver").textContent=GAME_VER;
+const GAME_VER="v0.4.7";$("ver").textContent=GAME_VER;
 showTitle();
 requestAnimationFrame(loop);
