@@ -35,7 +35,7 @@
 html,body{margin:0;height:100%;overflow:hidden;background:#141018;color:var(--ink);font-family:var(--font);-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;overscroll-behavior:none}
 input{-webkit-user-select:text;user-select:text}
 #game{position:fixed;inset:0}
-#game canvas{display:block;touch-action:none}
+#game canvas{display:block;touch-action:none;image-rendering:pixelated;image-rendering:crisp-edges}
 button{font-family:var(--font);cursor:pointer;color:var(--ink);touch-action:manipulation}
 button:focus-visible,input:focus-visible{outline:2px dashed var(--leaf-d);outline-offset:3px}
 
@@ -305,12 +305,17 @@ button:focus-visible,input:focus-visible{outline:2px dashed var(--leaf-d);outlin
   <button id="endAgain">もういちど きく</button>
 </div>
 
+<div id="lost" class="dark" style="background:#141018" hidden>
+  <p class="q">画面が うまく 表示できなく なりました</p>
+  <p id="lostNote" style="margin:0;font-size:14px;opacity:.7"></p>
+  <button id="lostBtn">再読み込み する</button>
+</div>
 <div id="rotate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M3 14a9 9 0 0 0 7 7"/><path d="M8 21h2v-2"/></svg>よこむきに してね</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js"></script>
-<script src="game.js?v=0.4.3"></script>
+<script src="game.js?v=0.4.5"></script>
 </body>
 </html>
