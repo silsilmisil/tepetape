@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // テープ1本 = コード1つ。コードを知っている人だけが読める（一覧は出せない）
+    match /tapes/{code} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if code.size() == 6
+        && request.resource.data.keys().hasOnly(['to', 'count', 'createdAt', 'phones'])
+        && request.resource.data.phones is list
+        && request.resource.data.phones.size() <= 40;
+      allow update, delete: if false;
+
+      // 声1本ずつ（電話品質の音声データ、30秒で約480KB）
+      match /voices/{vid} {
+        allow get: if true;
+        allow list: if false;
+        allow create: if request.resource.data.keys().hasOnly(['pcm', 'n'])
+          && request.resource.data.pcm is bytes
+          && request.resource.data.pcm.size() < 600000;
+        allow update, delete: if false;
+      }
+    }
+  }
+}
