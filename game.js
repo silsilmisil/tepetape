@@ -223,16 +223,21 @@ void main(){
   float dv=d-nn*12.;
   float fog=step(0.,dv);
   float edge=fog*(1.-step(7.,dv));
+  float bf=0.,bedge=0.;
   if(uBlob.w>.5){
     float db=length(pg-uBlob.xy)-uBlob.z-nn*10.;
-    float bf=1.-step(0.,db);
-    fog=max(fog,bf);
-    edge=max(edge,bf*step(-7.,db));
+    bf=1.-step(0.,db);
+    bedge=bf*step(-7.,db);
   }
-  if(fog<.5)discard;
+  if(fog<.5&&bf<.5)discard;
   float sp=h1(p+floor(uTime*14.));
   vec3 col=vec3(.078,.063,.094);
-  if(edge>.5&&sp>.72)col=sp>.93?vec3(.62,.55,.7):vec3(.22,.18,.27);
+  if(fog>.5){
+    if(edge>.5&&sp>.72)col=sp>.93?vec3(.62,.55,.7):vec3(.22,.18,.27);
+  }else{
+    col=mix(vec3(.25,.15,.78),vec3(.42,.3,.98),nn);
+    if(bedge>.5&&sp>.6)col=sp>.9?vec3(.88,.84,1.):vec3(.6,.5,1.);
+  }
   gl_FragColor=vec4(col,1.);
 }`});
 const fogMesh=new THREE.Mesh(new THREE.PlaneGeometry(W*TS+800,H*TS+800),fogMat);
@@ -246,7 +251,10 @@ let nextGust=performance.now()+3000;
 let scale=3,viewW=0,viewH=0;
 function resize(){
   const w=window.innerWidth,h=window.innerHeight;
-  scale=Math.max(1,Math.min(6,Math.floor(Math.min(w/(18*TS),h/(11*TS)))));
+  if(("ontouchstart" in window)||navigator.maxTouchPoints>0){
+    const rp=renderer.getPixelRatio(),target=Math.min(w/(15*TS),h/(8.5*TS));
+    scale=Math.max(1.5,Math.min(6,Math.round(target*rp)/rp));
+  }else scale=Math.max(1,Math.min(6,Math.floor(Math.min(w/(18*TS),h/(11*TS)))));
   viewW=w/scale;viewH=h/scale;
   camera.left=-viewW/2;camera.right=viewW/2;camera.top=viewH/2;camera.bottom=-viewH/2;camera.updateProjectionMatrix();
   renderer.setSize(w,h);
@@ -635,7 +643,7 @@ function hideTitle(){$("title").classList.add("fade");setTimeout(()=>{if(mode!==
 document.querySelectorAll("#title .back").forEach(b=>b.addEventListener("click",()=>titleView("lHome","bHome")));
 $("goRec").addEventListener("click",()=>{ensureAudio();loadBgm();titleView("lName","bName");setTimeout(()=>$("nameIn").focus(),50);});
 $("goListen").addEventListener("click",()=>{ensureAudio();loadBgm();$("codeErr").hidden=true;titleView("lCode","bCode");setTimeout(()=>$("codeIn").focus(),50);});
-$("nameIn").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();$("nameGo").click();}});
+$("nameIn").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();e.target.blur();}});
 $("codeIn").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();$("codeGo").click();}});
 $("codeIn").addEventListener("input",e=>{const v=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"");if(v!==e.target.value)e.target.value=v;$("codeErr").hidden=true;});
 
@@ -757,12 +765,27 @@ function openDiscard(target){
     const l=document.createElement("label");l.htmlFor=id;
     const r=document.createElement("input");r.type="radio";r.name="dk";r.id=id;r.value=k.id;if(i===0)r.checked=true;
     const s=document.createElement("span");s.textContent=k.label;
-    l.append(makeDisc(false),s,r);list.appendChild(l);
+    const w=document.createElement("button");w.type="button";w.className="dwrap";w.setAttribute("aria-label",k.label+"を 試聴");
+    const pi=document.createElement("span");pi.className="pi";pi.textContent="▶";
+    w.append(makeDisc(false),pi);
+    w.addEventListener("click",ev=>{ev.preventDefault();ev.stopPropagation();previewDiscard(k,w);});
+    l.append(w,s,r);list.appendChild(l);
   });
   $("discard").hidden=false;
 }
-$("discardNo").addEventListener("click",()=>{$("discard").hidden=true;lock=false;});
+let previewBtn=null;
+function stopPreview(){if(current)current.stop();}
+function previewDiscard(k,btn){
+  ensureAudio();
+  const same=previewBtn===btn&&current;
+  stopPreview();
+  if(same)return;
+  previewBtn=btn;btn.querySelector(".disc").classList.add("spin");btn.querySelector(".pi").textContent="■";
+  playRight(k.buffer,()=>{btn.querySelector(".disc").classList.remove("spin");btn.querySelector(".pi").textContent="▶";if(previewBtn===btn)previewBtn=null;});
+}
+$("discardNo").addEventListener("click",()=>{stopPreview();$("discard").hidden=true;lock=false;});
 $("discardYes").addEventListener("click",()=>{
+  stopPreview();
   const sel=document.querySelector('input[name="dk"]:checked');if(!sel)return;
   const id=+sel.value;kept=kept.filter(k=>k.id!==id);renderKept();
   discards++;$("discard").hidden=true;lock=false;updateHud();
