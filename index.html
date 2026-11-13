@@ -93,7 +93,7 @@ button:focus-visible,input:focus-visible{outline:2px dashed var(--leaf-d);outlin
 #act .ic{font-size:22px;line-height:1}
 #act.rec{background:var(--coral);border-color:#b9706a;color:#fff}
 #act.answer{background:#cfe7a6;border-color:var(--leaf-d);animation:bob .35s steps(2) infinite}
-#act.fog{background:#3a3042;border-color:#1d1724;color:#efe7f6}
+#act.fog{background:#5b3df5;border-color:#3a22c4;color:#fff;box-shadow:3px 4px 0 rgba(58,34,196,.35),0 0 18px rgba(110,80,255,.55)}
 #act.na{opacity:.55}
 @keyframes bob{50%{transform:translateY(-3px)}}
 #act2{position:fixed;right:calc(130px + env(safe-area-inset-right,0px));bottom:calc(30px + env(safe-area-inset-bottom,0px));z-index:6;font-size:14px}
@@ -105,7 +105,7 @@ button:focus-visible,input:focus-visible{outline:2px dashed var(--leaf-d);outlin
 .cditem{display:flex;align-items:center;gap:10px;text-align:left;background:#fffdf8;border:1.5px solid var(--lav);border-radius:30px 8px 8px 30px;padding:4px 10px 4px 4px;font-size:14px}
 .cditem .nm{flex:1;min-width:0}
 .cditem .pl{color:var(--leaf-d);font-size:15px}
-.disc{width:44px;height:44px;border-radius:50%;flex:none;position:relative;background:conic-gradient(from 20deg,#e9e3f3,#f9dbe4,#dcf1ea,#fbf0c6,#dde6f8,#f3dff0,#e9e3f3);box-shadow:inset 0 0 0 1px rgba(79,70,81,.18)}
+.disc{display:block;width:44px;height:44px;border-radius:50%;flex:none;position:relative;background:conic-gradient(from 20deg,#e9e3f3,#f9dbe4,#dcf1ea,#fbf0c6,#dde6f8,#f3dff0,#e9e3f3);box-shadow:inset 0 0 0 1px rgba(79,70,81,.18)}
 .disc::before{content:"";position:absolute;inset:32%;border-radius:50%;background:#fbf8f2;box-shadow:0 0 0 2px rgba(255,255,255,.8),inset 0 0 0 1px rgba(79,70,81,.15)}
 .disc::after{content:"";position:absolute;inset:45%;border-radius:50%;background:#bdb3c4}
 .disc.spin{animation:spin 1.6s linear infinite}
@@ -137,6 +137,18 @@ button:focus-visible,input:focus-visible{outline:2px dashed var(--leaf-d);outlin
 #meterFill{height:100%;width:0;background:var(--leaf)}
 #recTime{font-variant-numeric:tabular-nums;font-size:13px;margin:6px 0 10px}
 .btnrow{display:flex;flex-wrap:wrap;gap:10px}
+.recmain{display:flex;justify-content:center;margin:2px 0 12px}
+.recbig{width:118px;height:118px;border-radius:50%;border:4px solid #fff;background:#ff2b3a;color:#fff;font-size:15px;line-height:1.3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;box-shadow:0 0 0 4px #ff2b3a,0 6px 0 4px #b3121f;animation:recpulse 1.4s ease-in-out infinite}
+.recbig .dot{width:26px;height:26px;border-radius:50%;background:#fff}
+.recbig:active{transform:translateY(3px);box-shadow:0 0 0 4px #ff2b3a,0 3px 0 4px #b3121f}
+.recbig.stop{background:#3a2e39;box-shadow:0 0 0 4px #3a2e39,0 6px 0 4px #1d161c;animation:none}
+.recbig.stop .dot{border-radius:4px;background:#ff2b3a}
+@keyframes recpulse{50%{box-shadow:0 0 0 10px rgba(255,43,58,.35),0 6px 0 4px #b3121f}}
+.btnrow.center{justify-content:center}
+#discardList .dwrap{position:relative;flex:none;border:none;background:none;padding:0;width:40px;height:40px;border-radius:50%}
+#discardList .dwrap .disc{width:40px;height:40px}
+#discardList .dwrap .pi{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;color:#3a2e39;z-index:1;text-shadow:0 0 3px #fff}
+@media (max-height:520px){.recbig{width:96px;height:96px;font-size:13px}}
 #micErr{margin-top:10px;font-size:13px;line-height:1.6;border-top:1.5px dashed var(--lav);padding-top:8px}
 #discardList{display:flex;flex-direction:column;gap:6px;margin:0 0 12px;max-height:46vh;overflow:auto}
 #discardList label{display:flex;gap:10px;align-items:center;font-size:15px;background:#fffdf8;border:1.5px solid var(--lav);border-radius:30px 8px 8px 30px;padding:4px 10px 4px 4px;cursor:pointer}
@@ -159,7 +171,7 @@ button:focus-visible,input:focus-visible{outline:2px dashed var(--leaf-d);outlin
   #act{width:84px;height:84px;font-size:13px}
   #act2,#cds{right:calc(116px + env(safe-area-inset-right,0px))}
 }
-@media (prefers-reduced-motion:reduce){#act.answer,.spinning .reel,.disc.spin{animation:none}}
+@media (prefers-reduced-motion:reduce){.recbig,#act.answer,.spinning .reel,.disc.spin{animation:none}}
 </style>
 </head>
 <body>
@@ -238,7 +250,7 @@ button:focus-visible,input:focus-visible{outline:2px dashed var(--leaf-d);outlin
     <button class="tlink" id="testBtn" hidden>マイクなしで テスト（テスト音を 自動で かくす）</button>
     <p class="snd" id="sndNote"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a8.5 8.5 0 0 1 0 12"/></svg>音を 出して あそんでね</p>
   </div>
-  <p class="ver">v0.4.0</p>
+  <p class="ver">v0.4.1</p>
 </div>
 
 <!-- カード -->
@@ -257,9 +269,11 @@ button:focus-visible,input:focus-visible{outline:2px dashed var(--leaf-d);outlin
     <div class="chosen"><span class="tag" id="recTag"></span><p id="recText"></p></div>
     <div class="meter"><div id="meterFill"></div></div>
     <div id="recTime">0.0 / 30 びょう</div>
-    <div class="btnrow">
-      <button id="recStart" class="btn coral">● ろくおん かいし</button>
-      <button id="recStop" class="btn" hidden>■ とめる</button>
+    <div class="recmain">
+      <button id="recStart" class="recbig"><span class="dot"></span>ろくおん<br>かいし</button>
+      <button id="recStop" class="recbig stop" hidden><span class="dot"></span>とめる</button>
+    </div>
+    <div class="btnrow center">
       <button id="recPlay" class="btn" hidden>▶ きいてみる</button>
       <button id="recRetry" class="btn" hidden>↺ とりなおす</button>
       <button id="recPlace" class="btn green" hidden>☎ ここに かくす</button>
