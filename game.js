@@ -1017,5 +1017,6 @@ function loop(now){
   renderer.render(scene,camera);
   requestAnimationFrame(loop);
 }
+const GAME_VER="v0.4.3";$("ver").textContent=GAME_VER;
 showTitle();
 requestAnimationFrame(loop);
