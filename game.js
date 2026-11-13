@@ -647,7 +647,7 @@ function showTitle(){
 function hideTitle(){$("title").classList.add("fade");setTimeout(()=>{if(mode!=="title")$("title").hidden=true;},650);}
 document.querySelectorAll("#title .back").forEach(b=>b.addEventListener("click",()=>titleView("lHome","bHome")));
 $("goRec").addEventListener("click",()=>{ensureAudio();loadBgm();titleView("lName","bName");setTimeout(()=>$("nameIn").focus(),50);});
-$("goListen").addEventListener("click",()=>{ensureAudio();loadBgm();try{const lc=localStorage.getItem("jisa:lastCode");if(lc&&!$("codeIn").value)$("codeIn").value=lc;}catch(_){}$("codeErr").hidden=true;titleView("lCode","bCode");setTimeout(()=>$("codeIn").focus(),50);});
+$("goListen").addEventListener("click",()=>{ensureAudio();loadBgm();$("codeErr").hidden=true;titleView("lCode","bCode");setTimeout(()=>$("codeIn").focus(),50);});
 $("nameIn").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();e.target.blur();}});
 $("codeIn").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();$("codeGo").click();}});
 $("codeIn").addEventListener("input",e=>{const v=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"");if(v!==e.target.value)e.target.value=v;$("codeErr").hidden=true;});
@@ -698,7 +698,7 @@ $("copyBtn").addEventListener("click",()=>{
   const done=()=>toast("コードを コピーした");
   try{navigator.clipboard.writeText(lastCode).then(done,()=>toast(`コード：${lastCode}`,4000));}catch(e){toast(`コード：${lastCode}`,4000);}
 });
-$("hereBtn").addEventListener("click",()=>{ensureAudio();playCode="";startFind();});
+$("hereBtn").addEventListener("click",()=>{ensureAudio();startFind();});
 $("homeBtn").addEventListener("click",()=>{clearPhones();titleView("lHome","bHome");});
 
 $("codeGo").addEventListener("click",async()=>{
@@ -714,8 +714,7 @@ $("codeGo").addEventListener("click",async()=>{
     clearPhones();
     t.phones.forEach(p=>addPhone(p.tx,p.ty,p.pcm,"",p.final,p.color));
     if(!phones.some(p=>p.final))return err("この テープは こわれているみたい");
-    playCode=code;try{localStorage.setItem("jisa:lastCode",code);}catch(_){}
-    startFind(true);
+    startFind();
   }catch(e){console.warn(e);err("読みこめなかった。電波を たしかめて もう一度");}
 });
 
@@ -735,21 +734,12 @@ function drawMask(){
 }
 // GPU が リセットされたら 画像を 送り直す（Windows で 画面が 真っ黒になる対策）
 let lostT=0;
-renderer.domElement.addEventListener("webglcontextlost",e=>{e.preventDefault();clearTimeout(lostT);lostT=setTimeout(()=>{$("lostNote").textContent=playCode?"もう一度 同じ コードを 入れると、つづきから 遊べます。":"";$("lost").hidden=false;},1500);});
+renderer.domElement.addEventListener("webglcontextlost",e=>{e.preventDefault();clearTimeout(lostT);lostT=setTimeout(()=>{$("lostNote").textContent="もう一度 コードを 入れると、はじめから 遊べます。";$("lost").hidden=false;},1500);});
 renderer.domElement.addEventListener("webglcontextrestored",()=>{clearTimeout(lostT);$("lost").hidden=true;ALL_TEX.forEach(t=>t.needsUpdate=true);maskDirty=true;});
 $("lostBtn").addEventListener("click",()=>location.reload());
 
-// つづきから 遊べるように、さがす側の 進み具合を この端末に 保存する
 let playCode="";
-function saveProgress(){
-  if(!playCode||mode!=="find")return;
-  const st={used:phones.map(p=>p.used),kept:kept.map(k=>[k.pi,k.label]),discards,found,finalActive,blobLocked:blob.locked,
-    clearings:clearings.map(c=>[Math.round(c.x),Math.round(c.y),Math.round(c.r)]),px:player.x,py:player.y};
-  try{localStorage.setItem("jisa:"+playCode,JSON.stringify(st));}catch(_){}
-}
-function loadProgress(){try{return JSON.parse(localStorage.getItem("jisa:"+playCode)||"null");}catch(_){return null;}}
-function clearProgress(){try{if(playCode)localStorage.removeItem("jisa:"+playCode);}catch(_){}}
-function startFind(resume){
+function startFind(){
   mode="find";found=0;discards=0;finalActive=false;ringingPhone=null;kept=[];playingKeptId=null;renderKept();
   phones.forEach(p=>{if(p.used){p.used=false;scene.add(p.mesh);}});
   needFinal=Math.max(1,phones.length-2);
@@ -760,30 +750,19 @@ function startFind(resume){
   fogMesh.visible=true;
   hideTitle();showGameUI(true);updateHud();startBgm();
   lock=false;
-  const st=resume&&playCode?loadProgress():null;
-  if(st&&st.used&&st.used.length===phones.length){
-    phones.forEach((p,i)=>{if(st.used[i]){p.used=true;scene.remove(p.mesh);}});
-    kept=st.kept.filter(([i])=>phones[i]).map(([i,label])=>({id:++keptSeq,pi:i,buffer:phones[i].buffer,room:phones[i].room,label}));renderKept();
-    discards=st.discards|0;found=st.found|0;finalActive=!!st.finalActive;blob.locked=st.blobLocked!==false;if(!blob.locked)blob.cur=0;
-    clearings=st.clearings.map(([x,y,r])=>({x,y,r,cur:r}));maskDirty=true;
-    player.x=st.px;player.y=st.py;
-    if(finalActive)startRing(.05);
-    updateHud();toast("つづきから",2400);return;
-  }
   toast("でんわを さがそう。近づくと 鳴るよ",3000);
   setTimeout(()=>{if(mode==="find"&&!lock)toast("黒い もやは、押しつづけると すこしずつ 晴れる",3600);},3600);
 }
 
 let fogHintT=0;
 // もやに ふれて 押していると、すこしずつ 晴れる
-let erodeT=0,erodeSaveT=0;
+let erodeT=0;
 function erode(){
   const l=Math.hypot(player.mvx,player.mvy)||1;
   const px=player.x+player.mvx/l*11,py=player.y-3+player.mvy/l*11;
   clearings.push({x:px,y:py,r:20,cur:6});maskDirty=true;
   if(actx){const o=actx.createOscillator(),g=actx.createGain(),t=actx.currentTime;o.type="triangle";o.frequency.value=1500+Math.random()*700;
     g.gain.setValueAtTime(.05,t);g.gain.exponentialRampToValueAtTime(.001,t+.12);o.connect(g);g.connect(actx.destination);o.start(t);o.stop(t+.13);}
-  const now=performance.now();if(now-erodeSaveT>2000){erodeSaveT=now;saveProgress();}
 }
 function bump(hit){
   if(mode!=="find"||inCall)return;
@@ -804,6 +783,7 @@ function fogAhead(){
 function tryFog(t){
   if(t==="blob"&&!finalActive){toast("この もやは、ほかの でんわを ぜんぶ 聞いてから");return;}
   if(t==="blob"&&discards>=needFinal){unlockBlob();return;}
+  if(t==="fog"&&!nextTarget()){toast(finalActive?"もう どの でんわにも 行けるよ":"いまは 手放さなくても、見えている でんわに 行けるよ",2800);return;}
   openDiscard(t);
 }
 
@@ -848,17 +828,36 @@ $("discardYes").addEventListener("click",()=>{
     const l=Math.hypot(player.mvx,player.mvy)||1;
     clearings.push({x:player.x+player.mvx/l*5*TS,y:player.y-4+player.mvy/l*5*TS,r:9*TS,cur:1.5*TS});
     openPathToNext();trill();
-    toast("こえが ひとつ 消えた。もやが 晴れて、道が ひらけた…");saveProgress();
+    toast("こえが ひとつ 消えた。もやが 晴れて、道が ひらけた…");
   }else{
     if(discards>=needFinal)unlockBlob();
     else{trill();toast(`もやが すこし ゆらいだ。あと ${needFinal-discards}つ`);}
-    saveProgress();
+    
   }
 });
 // まだ見つけていない いちばん近い でんわ（なければ 最後の でんわ）まで、歩ける道に そって もやを 晴らす
+// いま 歩いて 行ける マス（もやが 晴れている マス）
+function reachableTiles(){
+  const seen=new Uint8Array(W*H),sx=Math.floor(player.x/TS),sy=Math.floor((player.y-3)/TS),q=[sy*W+sx];seen[sy*W+sx]=1;
+  for(let qi=0;qi<q.length;qi++){
+    const c=q[qi],cx=c%W,cy=(c/W)|0;
+    for(const[dx,dy]of[[1,0],[-1,0],[0,1],[0,-1]]){
+      const nx=cx+dx,ny=cy+dy;if(nx<0||ny<0||nx>=W||ny>=H)continue;
+      const n=ny*W+nx;if(seen[n]||SOLID.has(grid[ny][nx])||!inClear(nx*TS+8,ny*TS+8))continue;
+      seen[n]=1;q.push(n);
+    }
+  }
+  return seen;
+}
+function phoneReachable(p,seen){
+  for(const[dx,dy]of[[0,0],[1,0],[-1,0],[0,1],[0,-1]]){const x=p.tx+dx,y=p.ty+dy;if(x>=0&&y>=0&&x<W&&y<H&&seen[y*W+x])return true;}
+  return false;
+}
+// まだ もやに かくれている いちばん近い でんわ（ふつうの でんわを 全部 見つけたら 最後の でんわ）
 function nextTarget(){
-  const rest=phones.filter(p=>!p.used&&!p.final);
-  const list=rest.length?rest:phones.filter(p=>p.final&&!p.used);
+  const seen=reachableTiles();
+  const rest=phones.filter(p=>!p.used&&!p.final&&!phoneReachable(p,seen));
+  const list=rest.length?rest:phones.filter(p=>p.final&&!p.used&&finalActive&&!phoneReachable(p,seen));
   let best=null,bd=1e9;
   for(const p of list){const d=Math.hypot(p.tx*TS+8-player.x,p.ty*TS+8-player.y);if(d<bd){bd=d;best=p;}}
   return best;
@@ -887,7 +886,7 @@ function openPathToNext(){
   pts.forEach((c,i)=>clearings.push({x:(c%W)*TS+8,y:((c/W)|0)*TS+8,r:3.6*TS,cur:0,delay:i*.05}));
   clearings.push({x:tgt.tx*TS+8,y:tgt.ty*TS+8,r:8*TS,cur:0,delay:pts.length*.05});
 }
-function unlockBlob(){if(!blob.locked)return;blob.locked=false;trill();toast("さいごの でんわの もやが 晴れた",3000);saveProgress();}
+function unlockBlob(){if(!blob.locked)return;blob.locked=false;trill();toast("さいごの でんわの もやが 晴れた",3000);}
 
 function answer(){
   if(!ringingPhone||inCall)return;
@@ -907,8 +906,8 @@ function afterCall(p){
   if(p.final){$("endChoice").hidden=false;return;}
   found++;
   kept.push({id:++keptSeq,pi:phones.indexOf(p),buffer:p.buffer,room:p.room,label:placeLabel(p.room)});renderKept();
-  $("dimmer").className="";showGameUI(true);lock=false;updateHud();saveProgress();
-  if(found>=normals().length){setTimeout(()=>{toast("……どこかで でんわが 鳴っている",3400);finalActive=true;startRing(.05);saveProgress();},1400);}
+  $("dimmer").className="";showGameUI(true);lock=false;updateHud();
+  if(found>=normals().length){setTimeout(()=>{toast("……どこかで でんわが 鳴っている",3400);finalActive=true;startRing(.05);},1400);}
   else toast("こえを ひろった。右の ボタンで 聞きかえせる");
 }
 function replay(k){
@@ -963,7 +962,7 @@ $("act").addEventListener("click",onAction);
 /* ================= おわり ================= */
 const finalPhone=()=>phones.find(p=>p.final);
 $("endAgain").addEventListener("click",()=>{$("endChoice").hidden=true;callDark(finalPhone().buffer,()=>{$("endChoice").hidden=false;});});
-$("endClear").addEventListener("click",()=>{clearProgress();kept=[];renderKept();$("endChoice").hidden=true;mode="end";setTimeout(resetToTitle,1200);});
+$("endClear").addEventListener("click",()=>{kept=[];renderKept();$("endChoice").hidden=true;mode="end";setTimeout(resetToTitle,1200);});
 function resetToTitle(){
   stopRing();if(current)current.stop();
   clearPhones();kept=[];clearings=[];used.t.clear();used.l.clear();renderKept();
@@ -1055,6 +1054,6 @@ function loop(now){
   renderer.render(scene,camera);
   requestAnimationFrame(loop);
 }
-const GAME_VER="v0.4.5";$("ver").textContent=GAME_VER;
+const GAME_VER="v0.4.6";$("ver").textContent=GAME_VER;
 showTitle();
 requestAnimationFrame(loop);
