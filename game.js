@@ -165,7 +165,7 @@ function drawWaves(g){
 
 /* ================= Three.js ================= */
 const renderer=new THREE.WebGLRenderer({antialias:false});
-renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));renderer.setClearColor(0x141018);
+renderer.setPixelRatio(1);renderer.setClearColor(0x141018);
 document.getElementById("game").appendChild(renderer.domElement);
 const scene=new THREE.Scene();
 const camera=new THREE.OrthographicCamera(-1,1,1,-1,-100,100);camera.position.z=10;
@@ -251,7 +251,7 @@ const petals=[];const petalGeo=new THREE.PlaneGeometry(2,2);
 for(let i=0;i<34;i++){const m=new THREE.Mesh(petalGeo,new THREE.MeshBasicMaterial({color:i%3?0xf6d3da:0xfbe9ec,depthTest:false,transparent:true}));m.renderOrder=6;m.visible=false;scene.add(m);petals.push({m,on:false,x:0,y:0,vx:0,vy:0,ph:0});}
 let nextGust=performance.now()+3000;
 
-let scale=3,viewW=0,viewH=0;
+let scale=3,viewW=0,viewH=0,RK=2;
 function resize(){
   const w=window.innerWidth,h=window.innerHeight;
   if(("ontouchstart" in window)||navigator.maxTouchPoints>0){
@@ -260,7 +260,9 @@ function resize(){
   }else scale=Math.max(1,Math.min(6,Math.floor(Math.min(w/(18*TS),h/(11*TS)))));
   viewW=w/scale;viewH=h/scale;
   camera.left=-viewW/2;camera.right=viewW/2;camera.top=viewH/2;camera.bottom=-viewH/2;camera.updateProjectionMatrix();
-  renderer.setSize(w,h);
+  RK=scale>=2?2:1;
+  renderer.setSize(Math.round(viewW*RK),Math.round(viewH*RK),false);
+  renderer.domElement.style.width=w+"px";renderer.domElement.style.height=h+"px";
 }
 window.addEventListener("resize",resize);window.addEventListener("orientationchange",()=>setTimeout(resize,300));resize();
 
@@ -645,7 +647,7 @@ function showTitle(){
 function hideTitle(){$("title").classList.add("fade");setTimeout(()=>{if(mode!=="title")$("title").hidden=true;},650);}
 document.querySelectorAll("#title .back").forEach(b=>b.addEventListener("click",()=>titleView("lHome","bHome")));
 $("goRec").addEventListener("click",()=>{ensureAudio();loadBgm();titleView("lName","bName");setTimeout(()=>$("nameIn").focus(),50);});
-$("goListen").addEventListener("click",()=>{ensureAudio();loadBgm();$("codeErr").hidden=true;titleView("lCode","bCode");setTimeout(()=>$("codeIn").focus(),50);});
+$("goListen").addEventListener("click",()=>{ensureAudio();loadBgm();try{const lc=localStorage.getItem("jisa:lastCode");if(lc&&!$("codeIn").value)$("codeIn").value=lc;}catch(_){}$("codeErr").hidden=true;titleView("lCode","bCode");setTimeout(()=>$("codeIn").focus(),50);});
 $("nameIn").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();e.target.blur();}});
 $("codeIn").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();$("codeGo").click();}});
 $("codeIn").addEventListener("input",e=>{const v=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"");if(v!==e.target.value)e.target.value=v;$("codeErr").hidden=true;});
@@ -696,7 +698,7 @@ $("copyBtn").addEventListener("click",()=>{
   const done=()=>toast("コードを コピーした");
   try{navigator.clipboard.writeText(lastCode).then(done,()=>toast(`コード：${lastCode}`,4000));}catch(e){toast(`コード：${lastCode}`,4000);}
 });
-$("hereBtn").addEventListener("click",()=>{ensureAudio();startFind();});
+$("hereBtn").addEventListener("click",()=>{ensureAudio();playCode="";startFind();});
 $("homeBtn").addEventListener("click",()=>{clearPhones();titleView("lHome","bHome");});
 
 $("codeGo").addEventListener("click",async()=>{
@@ -712,7 +714,8 @@ $("codeGo").addEventListener("click",async()=>{
     clearPhones();
     t.phones.forEach(p=>addPhone(p.tx,p.ty,p.pcm,"",p.final,p.color));
     if(!phones.some(p=>p.final))return err("この テープは こわれているみたい");
-    startFind();
+    playCode=code;try{localStorage.setItem("jisa:lastCode",code);}catch(_){}
+    startFind(true);
   }catch(e){console.warn(e);err("読みこめなかった。電波を たしかめて もう一度");}
 });
 
@@ -731,9 +734,22 @@ function drawMask(){
   mg.globalCompositeOperation="source-over";maskTex.needsUpdate=true;
 }
 // GPU が リセットされたら 画像を 送り直す（Windows で 画面が 真っ黒になる対策）
-renderer.domElement.addEventListener("webglcontextlost",e=>e.preventDefault());
-renderer.domElement.addEventListener("webglcontextrestored",()=>{ALL_TEX.forEach(t=>t.needsUpdate=true);maskDirty=true;});
-function startFind(){
+let lostT=0;
+renderer.domElement.addEventListener("webglcontextlost",e=>{e.preventDefault();clearTimeout(lostT);lostT=setTimeout(()=>{$("lostNote").textContent=playCode?"もう一度 同じ コードを 入れると、つづきから 遊べます。":"";$("lost").hidden=false;},1500);});
+renderer.domElement.addEventListener("webglcontextrestored",()=>{clearTimeout(lostT);$("lost").hidden=true;ALL_TEX.forEach(t=>t.needsUpdate=true);maskDirty=true;});
+$("lostBtn").addEventListener("click",()=>location.reload());
+
+// つづきから 遊べるように、さがす側の 進み具合を この端末に 保存する
+let playCode="";
+function saveProgress(){
+  if(!playCode||mode!=="find")return;
+  const st={used:phones.map(p=>p.used),kept:kept.map(k=>[k.pi,k.label]),discards,found,finalActive,blobLocked:blob.locked,
+    clearings:clearings.map(c=>[Math.round(c.x),Math.round(c.y),Math.round(c.r)]),px:player.x,py:player.y};
+  try{localStorage.setItem("jisa:"+playCode,JSON.stringify(st));}catch(_){}
+}
+function loadProgress(){try{return JSON.parse(localStorage.getItem("jisa:"+playCode)||"null");}catch(_){return null;}}
+function clearProgress(){try{if(playCode)localStorage.removeItem("jisa:"+playCode);}catch(_){}}
+function startFind(resume){
   mode="find";found=0;discards=0;finalActive=false;ringingPhone=null;kept=[];playingKeptId=null;renderKept();
   phones.forEach(p=>{if(p.used){p.used=false;scene.add(p.mesh);}});
   needFinal=Math.max(1,phones.length-2);
@@ -744,16 +760,36 @@ function startFind(){
   fogMesh.visible=true;
   hideTitle();showGameUI(true);updateHud();startBgm();
   lock=false;
+  const st=resume&&playCode?loadProgress():null;
+  if(st&&st.used&&st.used.length===phones.length){
+    phones.forEach((p,i)=>{if(st.used[i]){p.used=true;scene.remove(p.mesh);}});
+    kept=st.kept.filter(([i])=>phones[i]).map(([i,label])=>({id:++keptSeq,pi:i,buffer:phones[i].buffer,room:phones[i].room,label}));renderKept();
+    discards=st.discards|0;found=st.found|0;finalActive=!!st.finalActive;blob.locked=st.blobLocked!==false;if(!blob.locked)blob.cur=0;
+    clearings=st.clearings.map(([x,y,r])=>({x,y,r,cur:r}));maskDirty=true;
+    player.x=st.px;player.y=st.py;
+    if(finalActive)startRing(.05);
+    updateHud();toast("つづきから",2400);return;
+  }
   toast("でんわを さがそう。近づくと 鳴るよ",3000);
-  setTimeout(()=>{if(mode==="find"&&!lock)toast("黒い もやは、ひろった こえを 手放すと 晴れる",3600);},3600);
+  setTimeout(()=>{if(mode==="find"&&!lock)toast("黒い もやは、押しつづけると すこしずつ 晴れる",3600);},3600);
 }
 
 let fogHintT=0;
+// もやに ふれて 押していると、すこしずつ 晴れる
+let erodeT=0,erodeSaveT=0;
+function erode(){
+  const l=Math.hypot(player.mvx,player.mvy)||1;
+  const px=player.x+player.mvx/l*11,py=player.y-3+player.mvy/l*11;
+  clearings.push({x:px,y:py,r:20,cur:6});maskDirty=true;
+  if(actx){const o=actx.createOscillator(),g=actx.createGain(),t=actx.currentTime;o.type="triangle";o.frequency.value=1500+Math.random()*700;
+    g.gain.setValueAtTime(.05,t);g.gain.exponentialRampToValueAtTime(.001,t+.12);o.connect(g);g.connect(actx.destination);o.start(t);o.stop(t+.13);}
+  const now=performance.now();if(now-erodeSaveT>2000){erodeSaveT=now;saveProgress();}
+}
 function bump(hit){
   if(mode!=="find"||inCall)return;
   const now=performance.now();
   if(hit==="fog"||hit==="blob"){
-    if(now-fogHintT>6000){fogHintT=now;toast(kept.length?"右の ボタンで もやを 消せる":"こえを ひろうと、もやを 消せるように なる");}
+    if(now-fogHintT>9000){fogHintT=now;toast(hit==="blob"?"この もやは、こえを 手放さないと 晴れない":kept.length?"押しつづけると すこしずつ 晴れる。こえを 手放すと 一気に 晴れる":"押しつづけると、すこしずつ 晴れていく");}
     return;
   }
   if(hit.final&&!finalActive&&now-fogHintT>2500){fogHintT=now;toast("……まだ つながらない みたい");}
@@ -812,10 +848,11 @@ $("discardYes").addEventListener("click",()=>{
     const l=Math.hypot(player.mvx,player.mvy)||1;
     clearings.push({x:player.x+player.mvx/l*5*TS,y:player.y-4+player.mvy/l*5*TS,r:9*TS,cur:1.5*TS});
     openPathToNext();trill();
-    toast("こえが ひとつ 消えた。もやが 晴れて、道が ひらけた…");
+    toast("こえが ひとつ 消えた。もやが 晴れて、道が ひらけた…");saveProgress();
   }else{
     if(discards>=needFinal)unlockBlob();
     else{trill();toast(`もやが すこし ゆらいだ。あと ${needFinal-discards}つ`);}
+    saveProgress();
   }
 });
 // まだ見つけていない いちばん近い でんわ（なければ 最後の でんわ）まで、歩ける道に そって もやを 晴らす
@@ -850,7 +887,7 @@ function openPathToNext(){
   pts.forEach((c,i)=>clearings.push({x:(c%W)*TS+8,y:((c/W)|0)*TS+8,r:3.6*TS,cur:0,delay:i*.05}));
   clearings.push({x:tgt.tx*TS+8,y:tgt.ty*TS+8,r:8*TS,cur:0,delay:pts.length*.05});
 }
-function unlockBlob(){if(!blob.locked)return;blob.locked=false;trill();toast("さいごの でんわの もやが 晴れた",3000);}
+function unlockBlob(){if(!blob.locked)return;blob.locked=false;trill();toast("さいごの でんわの もやが 晴れた",3000);saveProgress();}
 
 function answer(){
   if(!ringingPhone||inCall)return;
@@ -869,9 +906,9 @@ function afterCall(p){
   p.used=true;scene.remove(p.mesh);ringingPhone=null;inCall=false;
   if(p.final){$("endChoice").hidden=false;return;}
   found++;
-  kept.push({id:++keptSeq,buffer:p.buffer,room:p.room,label:placeLabel(p.room)});renderKept();
-  $("dimmer").className="";showGameUI(true);lock=false;updateHud();
-  if(found>=normals().length){setTimeout(()=>{toast("……どこかで でんわが 鳴っている",3400);finalActive=true;startRing(.05);},1400);}
+  kept.push({id:++keptSeq,pi:phones.indexOf(p),buffer:p.buffer,room:p.room,label:placeLabel(p.room)});renderKept();
+  $("dimmer").className="";showGameUI(true);lock=false;updateHud();saveProgress();
+  if(found>=normals().length){setTimeout(()=>{toast("……どこかで でんわが 鳴っている",3400);finalActive=true;startRing(.05);saveProgress();},1400);}
   else toast("こえを ひろった。右の ボタンで 聞きかえせる");
 }
 function replay(k){
@@ -926,7 +963,7 @@ $("act").addEventListener("click",onAction);
 /* ================= おわり ================= */
 const finalPhone=()=>phones.find(p=>p.final);
 $("endAgain").addEventListener("click",()=>{$("endChoice").hidden=true;callDark(finalPhone().buffer,()=>{$("endChoice").hidden=false;});});
-$("endClear").addEventListener("click",()=>{kept=[];renderKept();$("endChoice").hidden=true;mode="end";setTimeout(resetToTitle,1200);});
+$("endClear").addEventListener("click",()=>{clearProgress();kept=[];renderKept();$("endChoice").hidden=true;mode="end";setTimeout(resetToTitle,1200);});
 function resetToTitle(){
   stopRing();if(current)current.stop();
   clearPhones();kept=[];clearings=[];used.t.clear();used.l.clear();renderKept();
@@ -955,6 +992,7 @@ function loop(now){
       const h1=tryMove(vx*sp,0),h2=tryMove(0,vy*sp);
       if(Math.hypot(player.x-ox,player.y-oy)>.4){stepT+=dt*(.5+mag*.5);if(stepT>.2){stepT=0;footstep();}}
       const hit=h1||h2;if(hit)bump(hit);
+      if(mode==="find"&&(h1==="fog"||h2==="fog")){erodeT+=dt;if(erodeT>.3){erodeT=0;erode();}}
       player.animT+=dt*mag;if(player.animT>.12){player.animT=0;player.frame^=1;}
     }else player.frame=0;
   }
@@ -996,7 +1034,7 @@ function loop(now){
   // カメラ
   const cx=W*TS<=viewW?W*TS/2:Math.min(Math.max(player.x,viewW/2),W*TS-viewW/2);
   const cy=H*TS<=viewH?H*TS/2:Math.min(Math.max(player.y-6,viewH/2),H*TS-viewH/2);
-  camera.position.x=Math.round(cx*scale)/scale;camera.position.y=-Math.round(cy*scale)/scale;
+  camera.position.x=Math.round(cx*RK)/RK;camera.position.y=-Math.round(cy*RK)/RK;
   // 花びら
   const L=camera.position.x-viewW/2,Tp=-camera.position.y-viewH/2;
   if(now>nextGust){nextGust=now+5000+Math.random()*8000;const k=6+Math.floor(Math.random()*12);let c=0;
@@ -1017,6 +1055,6 @@ function loop(now){
   renderer.render(scene,camera);
   requestAnimationFrame(loop);
 }
-const GAME_VER="v0.4.3";$("ver").textContent=GAME_VER;
+const GAME_VER="v0.4.5";$("ver").textContent=GAME_VER;
 showTitle();
 requestAnimationFrame(loop);
