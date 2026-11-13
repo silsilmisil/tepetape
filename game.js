@@ -50,7 +50,7 @@ const WSH="rgba(70,52,96,.42)";
 
 function drawMap(){
   const c=document.createElement("canvas");c.width=W*TS;c.height=H*TS;
-  const g=c.getContext("2d");
+  const g=c.getContext("2d",{willReadFrequently:true});
   for(let y=0;y<H;y++)for(let x=0;x<W;x++)drawTile(g,x,y);
   // 木の影は上に重ねる（となりのタイルにはみ出す）
   for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(grid[y][x]===T.TREE||grid[y][x]===T.SAKURA)drawTreeTop(g,x,y);
@@ -127,7 +127,7 @@ function drawTreeTop(g,x,y){
 }
 
 /* ================= スプライト ================= */
-function spriteCanvas(fn){const c=document.createElement("canvas");c.width=16;c.height=16;fn(c.getContext("2d"));return c;}
+function spriteCanvas(fn){const c=document.createElement("canvas");c.width=16;c.height=16;fn(c.getContext("2d",{willReadFrequently:true}));return c;}
 const box=(g,c,x,y,w,h)=>{g.fillStyle=c;g.fillRect(x,y,w,h);};
 // dir: 0下 1上 2左 3右
 function drawKid(g,dir,frame){
@@ -169,7 +169,8 @@ renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));renderer.setClear
 document.getElementById("game").appendChild(renderer.domElement);
 const scene=new THREE.Scene();
 const camera=new THREE.OrthographicCamera(-1,1,1,-1,-100,100);camera.position.z=10;
-function tex(cv){const t=new THREE.CanvasTexture(cv);t.magFilter=THREE.NearestFilter;t.minFilter=THREE.NearestFilter;t.generateMipmaps=false;return t;}
+const ALL_TEX=[];
+function tex(cv){const t=new THREE.CanvasTexture(cv);t.magFilter=THREE.NearestFilter;t.minFilter=THREE.NearestFilter;t.generateMipmaps=false;ALL_TEX.push(t);return t;}
 const mat=t=>new THREE.MeshBasicMaterial({map:t,alphaTest:.5});
 
 const mapMesh=new THREE.Mesh(new THREE.PlaneGeometry(W*TS,H*TS),new THREE.MeshBasicMaterial({map:tex(drawMap())}));
@@ -208,21 +209,23 @@ const lightMesh=new THREE.Mesh(new THREE.PlaneGeometry(W*TS+400,H*TS+400),lightM
 lightMesh.position.set(W*TS/2,-H*TS/2,5);lightMesh.renderOrder=5;scene.add(lightMesh);
 
 // 黒いもや
-const MAXC=48;
-const fogUni={uTime:{value:0},uN:{value:0},uC:{value:Array.from({length:MAXC},()=>new THREE.Vector3())},uBlob:{value:new THREE.Vector4(0,0,0,0)}};
+const MS=4,maskCv=document.createElement("canvas");maskCv.width=W*TS/MS;maskCv.height=H*TS/MS;
+const mg=maskCv.getContext("2d",{willReadFrequently:true});mg.fillStyle="#000";mg.fillRect(0,0,maskCv.width,maskCv.height);
+const maskTex=new THREE.CanvasTexture(maskCv);maskTex.magFilter=THREE.LinearFilter;maskTex.minFilter=THREE.LinearFilter;maskTex.generateMipmaps=false;ALL_TEX.push(maskTex);
+const fogUni={uTime:{value:0},uMask:{value:maskTex},uSize:{value:new THREE.Vector2(W*TS,H*TS)},uBlob:{value:new THREE.Vector4(0,0,0,0)}};
 const fogMat=new THREE.ShaderMaterial({transparent:true,depthTest:false,depthWrite:false,uniforms:fogUni,vertexShader:VERT,
-fragmentShader:`uniform float uTime;uniform int uN;uniform vec3 uC[${MAXC}];uniform vec4 uBlob;varying vec2 vP;${NOISE}
+fragmentShader:`uniform float uTime;uniform sampler2D uMask;uniform vec2 uSize;uniform vec4 uBlob;varying vec2 vP;${NOISE}
 void main(){
   vec2 p=floor(vP/2.)*2.;
   float band=floor(p.y/6.);
   float gk=step(.94,h1(vec2(band,floor(uTime*11.))));
   vec2 pg=p+vec2(gk*(h1(vec2(band,floor(uTime*23.)))-.5)*28.,0.);
   float nn=n2(pg/15.+vec2(uTime*.7,-uTime*.45))*.7+n2(pg/5.-uTime*1.4)*.3;
-  float d=1e5;
-  for(int i=0;i<${MAXC};i++){if(i>=uN)break;d=min(d,length(pg-uC[i].xy)-uC[i].z);}
-  float dv=d-nn*12.;
-  float fog=step(0.,dv);
-  float edge=fog*(1.-step(7.,dv));
+  vec2 uv=clamp(vec2(pg.x/uSize.x,1.-pg.y/uSize.y),0.,1.);
+  float m=texture2D(uMask,uv).r;
+  float fv=m+(nn-.5)*.55;
+  float fog=1.-step(.5,fv);
+  float edge=fog*step(.34,fv);
   float bf=0.,bedge=0.;
   if(uBlob.w>.5){
     float db=length(pg-uBlob.xy)-uBlob.z-nn*10.;
@@ -714,12 +717,28 @@ $("codeGo").addEventListener("click",async()=>{
 });
 
 /* ================= さがす ================= */
+let maskDirty=true;
+function drawMask(){
+  mg.globalCompositeOperation="source-over";mg.fillStyle="#000";mg.fillRect(0,0,maskCv.width,maskCv.height);
+  mg.globalCompositeOperation="lighter";
+  const b=14/MS;
+  for(const c of clearings){
+    if(c.cur<=1)continue;
+    const x=c.x/MS,y=c.y/MS,r=c.cur/MS;
+    const g=mg.createRadialGradient(x,y,Math.max(0,r-b),x,y,r+b);g.addColorStop(0,"#fff");g.addColorStop(1,"#000");
+    mg.fillStyle=g;mg.beginPath();mg.arc(x,y,r+b,0,Math.PI*2);mg.fill();
+  }
+  mg.globalCompositeOperation="source-over";maskTex.needsUpdate=true;
+}
+// GPU が リセットされたら 画像を 送り直す（Windows で 画面が 真っ黒になる対策）
+renderer.domElement.addEventListener("webglcontextlost",e=>e.preventDefault());
+renderer.domElement.addEventListener("webglcontextrestored",()=>{ALL_TEX.forEach(t=>t.needsUpdate=true);maskDirty=true;});
 function startFind(){
   mode="find";found=0;discards=0;finalActive=false;ringingPhone=null;kept=[];playingKeptId=null;renderKept();
   phones.forEach(p=>{if(p.used){p.used=false;scene.add(p.mesh);}});
   needFinal=Math.max(1,phones.length-2);
   player.x=START.x;player.y=START.y;player.dir=1;player.mvx=0;player.mvy=-1;
-  clearings=[{x:START.x,y:START.y-10,r:8*TS,cur:8*TS}];
+  clearings=[{x:START.x,y:START.y-10,r:8*TS,cur:8*TS}];maskDirty=true;
   const fp=phones.find(p=>p.final);
   blob.x=fp.tx*TS+8;blob.y=fp.ty*TS+9;blob.r=2.6*TS;blob.cur=blob.r;blob.locked=true;
   fogMesh.visible=true;
@@ -791,13 +810,46 @@ $("discardYes").addEventListener("click",()=>{
   discards++;$("discard").hidden=true;lock=false;updateHud();
   if(discardTarget==="fog"){
     const l=Math.hypot(player.mvx,player.mvy)||1;
-    clearings.push({x:player.x+player.mvx/l*10*TS,y:player.y-4+player.mvy/l*10*TS,r:16*TS,cur:1.5*TS});trill();
-    toast("こえが ひとつ 消えた。もやが 晴れていく…");
+    clearings.push({x:player.x+player.mvx/l*5*TS,y:player.y-4+player.mvy/l*5*TS,r:9*TS,cur:1.5*TS});
+    openPathToNext();trill();
+    toast("こえが ひとつ 消えた。もやが 晴れて、道が ひらけた…");
   }else{
     if(discards>=needFinal)unlockBlob();
     else{trill();toast(`もやが すこし ゆらいだ。あと ${needFinal-discards}つ`);}
   }
 });
+// まだ見つけていない いちばん近い でんわ（なければ 最後の でんわ）まで、歩ける道に そって もやを 晴らす
+function nextTarget(){
+  const rest=phones.filter(p=>!p.used&&!p.final);
+  const list=rest.length?rest:phones.filter(p=>p.final&&!p.used);
+  let best=null,bd=1e9;
+  for(const p of list){const d=Math.hypot(p.tx*TS+8-player.x,p.ty*TS+8-player.y);if(d<bd){bd=d;best=p;}}
+  return best;
+}
+function tilePath(sx,sy,gx,gy){
+  const N=W*H,prev=new Int32Array(N).fill(-1),s=sy*W+sx,g=gy*W+gx,q=[s];prev[s]=s;
+  for(let qi=0;qi<q.length;qi++){
+    const c=q[qi];if(c===g)break;const cx=c%W,cy=(c/W)|0;
+    for(const[dx,dy]of[[1,0],[-1,0],[0,1],[0,-1]]){
+      const nx=cx+dx,ny=cy+dy;if(nx<0||ny<0||nx>=W||ny>=H)continue;
+      const n=ny*W+nx;if(prev[n]!==-1)continue;
+      if(SOLID.has(grid[ny][nx])&&n!==g)continue;
+      prev[n]=c;q.push(n);
+    }
+  }
+  if(prev[g]===-1)return null;
+  const path=[];let c=g;while(c!==s){path.push(c);c=prev[c];}path.push(s);return path.reverse();
+}
+function openPathToNext(){
+  const tgt=nextTarget();if(!tgt)return;
+  const sx=Math.floor(player.x/TS),sy=Math.floor((player.y-3)/TS);
+  const path=tilePath(sx,sy,tgt.tx,tgt.ty);
+  const pts=[];
+  if(path){for(let i=0;i<path.length;i+=3)pts.push(path[i]);pts.push(path[path.length-1]);}
+  else{const n=Math.ceil(Math.hypot(tgt.tx-sx,tgt.ty-sy)/3);for(let i=0;i<=n;i++){const k=i/Math.max(1,n);pts.push(Math.round(sy+(tgt.ty-sy)*k)*W+Math.round(sx+(tgt.tx-sx)*k));}}
+  pts.forEach((c,i)=>clearings.push({x:(c%W)*TS+8,y:((c/W)|0)*TS+8,r:3.6*TS,cur:0,delay:i*.05}));
+  clearings.push({x:tgt.tx*TS+8,y:tgt.ty*TS+8,r:8*TS,cur:0,delay:pts.length*.05});
+}
 function unlockBlob(){if(!blob.locked)return;blob.locked=false;trill();toast("さいごの でんわの もやが 晴れた",3000);}
 
 function answer(){
@@ -908,11 +960,13 @@ function loop(now){
   }
   // もやの更新
   if(mode==="find"){
-    for(const c of clearings)c.cur+=(c.r-c.cur)*Math.min(1,dt*2.5);
+    let dirty=maskDirty;
+    for(const c of clearings){
+      if(c.delay>0){c.delay-=dt;continue;}
+      if(Math.abs(c.r-c.cur)>.3){c.cur+=(c.r-c.cur)*Math.min(1,dt*3);dirty=true;}else c.cur=c.r;
+    }
+    if(dirty){drawMask();maskDirty=false;}
     if(!blob.locked)blob.cur+=(0-blob.cur)*Math.min(1,dt*2);
-    const n=Math.min(MAXC,clearings.length);
-    for(let i=0;i<n;i++){const c=clearings[clearings.length-n+i];fogUni.uC.value[i].set(c.x,c.y,c.cur);}
-    fogUni.uN.value=n;
     fogUni.uBlob.value.set(blob.x,blob.y,blob.cur,blob.cur>2?1:0);
   }
   fogUni.uTime.value=t;lightMat.uniforms.uTime.value=t;
